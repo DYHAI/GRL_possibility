@@ -1,0 +1,17 @@
+---
+description: GRL_possibility project context — KH/Trixi + U-Net
+alwaysApply: true
+---
+
+# GRL_possibility
+
+Paper: RMSE/MSE forecasting ≈ conditional mean → over-smoothing.
+
+**Active:** Kelvin–Helmholtz via Julia/Trixi → PyTorch U-Net (`512×512×4`, RMSE loss, 180/20 split). **Done:** Markov.
+
+- Julia: `tools/julia-1.11.9/bin/julia` + `experiments/kelvin_helmholtz/trixi/`
+- Ensemble data: `outputs/kelvin_helmholtz/trixi_ensemble_200/member_*/*512x4.npz`
+- U-Net: `train_unet.py`, `eval_unet.py` (rollout + high-k spectrum), `run_unet_pipeline.sh`
+- Figures: single full-domain panel, `kh_colormap.py`, no zoom inset
+- **No cylinder experiment** — out of scope
+- See `AGENTS.md` and `README.md`

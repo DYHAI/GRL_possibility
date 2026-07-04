@@ -1,0 +1,201 @@
+# By default, Julia/LLVM does not use fused multiply-add operations (FMAs).
+# Since these FMAs can increase the performance of many numerical algorithms,
+# we need to opt-in explicitly.
+# See https://ranocha.de/blog/Optimizing_EC_Trixi for further details.
+@muladd begin
+#! format: noindent
+
+struct VisualizationCallback{PlotDataCreator, SolutionVariables, VariableNames,
+                             PlotCreator}
+    plot_data_creator::PlotDataCreator
+    interval::Int
+    solution_variables::SolutionVariables
+    variable_names::VariableNames
+    show_mesh::Bool
+    plot_creator::PlotCreator
+    plot_arguments::Dict{Symbol, Any}
+end
+
+function Base.show(io::IO,
+                   cb::DiscreteCallback{Condition, Affect!}) where {Condition,
+                                                                    Affect! <:
+                                                                    VisualizationCallback
+                                                                    }
+    visualization_callback = cb.affect!
+    @unpack plot_data_creator, interval, plot_arguments, solution_variables, variable_names, show_mesh, plot_creator = visualization_callback
+    print(io, "VisualizationCallback(",
+          "plot_data_creator=", plot_data_creator, ", ",
+          "interval=", interval, ", ",
+          "solution_variables=", solution_variables, ", ",
+          "variable_names=", variable_names, ", ",
+          "show_mesh=", show_mesh, ", ",
+          "plot_creator=", plot_creator, ", ",
+          "plot_arguments=", plot_arguments, ")")
+    return nothing
+end
+
+function Base.show(io::IO, ::MIME"text/plain",
+                   cb::DiscreteCallback{Condition, Affect!}) where {Condition,
+                                                                    Affect! <:
+                                                                    VisualizationCallback
+                                                                    }
+    if get(io, :compact, false)
+        show(io, cb)
+    else
+        visualization_callback = cb.affect!
+
+        setup = [
+            "plot data creator" => visualization_callback.plot_data_creator,
+            "interval" => visualization_callback.interval,
+            "plot arguments" => visualization_callback.plot_arguments,
+            "solution variables" => visualization_callback.solution_variables,
+            "variable names" => visualization_callback.variable_names,
+            "show mesh" => visualization_callback.show_mesh,
+            "plot creator" => visualization_callback.plot_creator
+        ]
+        summary_box(io, "VisualizationCallback", setup)
+    end
+end
+
+"""
+    VisualizationCallback(semi, plot_data_creator = nothing;
+                          interval=0,
+                          solution_variables=cons2prim,
+                          variable_names=[],
+                          show_mesh=false,
+                          plot_creator=show_plot,
+                          plot_arguments...)
+
+Create a callback that visualizes results during a simulation, also known as *in-situ
+visualization*.
+
+To customize the generated figure, `plot_data_creator` allows to use different plot data types.
+Currently provided are [`PlotData1D`](@ref) and [`PlotData2D`](@ref), while the latter is used for both 2D and 3D.
+
+The `interval` specifies the number of time step iterations after which a new plot is generated. The
+available variables to plot are configured with the `solution_variables` parameter, which acts the
+same way as for the [`SaveSolutionCallback`](@ref). The variables to be actually plotted can be
+selected by providing a single string or a list of strings to `variable_names`, and if `show_mesh`
+is `true`, an additional plot with the mesh will be generated.
+
+With `plot_creator` you can further specify an own function to visualize results, which must support the
+same interface as the default implementation [`show_plot`](@ref). All remaining
+keyword arguments are collected and passed as additional arguments to the plotting command.
+"""
+function VisualizationCallback(semi, plot_data_creator = nothing;
+                               interval = 0,
+                               solution_variables = cons2prim,
+                               variable_names = [],
+                               show_mesh = false,
+                               plot_creator = show_plot,
+                               plot_arguments...)
+    mpi_isparallel() && error("this callback does not work in parallel yet")
+
+    if variable_names isa String
+        variable_names = String[variable_names]
+    end
+
+    if plot_data_creator === nothing # No custom plot data type provided
+        if ndims(semi) == 1
+            plot_data_creator = PlotData1D
+        else # 2D or 3D
+            plot_data_creator = PlotData2D
+        end
+    end
+
+    visualization_callback = VisualizationCallback(plot_data_creator,
+                                                   interval,
+                                                   solution_variables, variable_names,
+                                                   show_mesh,
+                                                   plot_creator,
+                                                   Dict{Symbol, Any}(plot_arguments))
+
+    return DiscreteCallback(visualization_callback, visualization_callback, # the first one is the condition, the second the affect!
+                            save_positions = (false, false),
+                            initialize = initialize!)
+end
+
+function initialize!(cb::DiscreteCallback{Condition, Affect!}, u, t,
+                     integrator) where {Condition, Affect! <: VisualizationCallback}
+    visualization_callback = cb.affect!
+
+    visualization_callback(integrator)
+
+    return nothing
+end
+
+# this method is called to determine whether the callback should be activated
+function (visualization_callback::VisualizationCallback)(u, t, integrator)
+    @unpack interval = visualization_callback
+
+    # With error-based step size control, some steps can be rejected. Thus,
+    #   `integrator.iter >= integrator.stats.naccept`
+    #    (total #steps)       (#accepted steps)
+    # We need to check the number of accepted steps since callbacks are not
+    # activated after a rejected step.
+    return interval > 0 && (integrator.stats.naccept % interval == 0 ||
+            isfinished(integrator))
+end
+
+# this method is called when the callback is activated
+function (visualization_callback::VisualizationCallback)(integrator)
+    u_ode = integrator.u
+    semi = integrator.p
+    @unpack plot_data_creator, plot_arguments, solution_variables, variable_names, show_mesh, plot_creator = visualization_callback
+
+    # Extract plot data
+    plot_data = plot_data_creator(u_ode, semi, solution_variables = solution_variables)
+
+    # If variable names were not specified, plot everything
+    if isempty(variable_names)
+        variable_names = String[keys(plot_data)...]
+    end
+
+    # Create plot
+    plot_creator(plot_data, variable_names;
+                 show_mesh = show_mesh, plot_arguments = plot_arguments,
+                 time = integrator.t, timestep = integrator.stats.naccept)
+
+    # avoid re-evaluating possible FSAL stages
+    derivative_discontinuity!(integrator, false)
+    return nothing
+end
+
+"""
+    show_plot(plot_data, variable_names;
+              show_mesh=true, plot_arguments=Dict{Symbol,Any}(),
+              time=nothing, timestep=nothing)
+
+Visualize the plot data object provided in `plot_data` and display result, plotting only the
+variables in `variable_names` and, optionally, the mesh (if `show_mesh` is `true`).  Additionally,
+`plot_arguments` will be unpacked and passed as keyword arguments to the `Plots.plot` command.
+
+This function is the default `plot_creator` argument for the [`VisualizationCallback`](@ref).
+`time` and `timestep` are currently unused by this function.
+
+!!! note
+    This requires loading [Plots.jl](https://github.com/JuliaPlots/Plots.jl), e.g., via `using Plots`.
+
+See also: [`VisualizationCallback`](@ref), [`save_plot`](@ref)
+"""
+function show_plot end
+
+"""
+    save_plot(plot_data, variable_names;
+              show_mesh=true, plot_arguments=Dict{Symbol,Any}(),
+              time=nothing, timestep=nothing)
+
+Visualize the plot data object provided in `plot_data` and save result as a PNG file in the `out`
+directory, plotting only the variables in `variable_names` and, optionally, the mesh (if `show_mesh`
+is `true`).  Additionally, `plot_arguments` will be unpacked and passed as keyword arguments to the
+`Plots.plot` command.
+
+The `timestep` is used in the filename. `time` is currently unused by this function.
+
+!!! note
+    This requires loading [Plots.jl](https://github.com/JuliaPlots/Plots.jl), e.g., via `using Plots`.
+
+See also: [`VisualizationCallback`](@ref), [`show_plot`](@ref)
+"""
+function save_plot end
+end # @muladd

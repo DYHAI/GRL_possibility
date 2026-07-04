@@ -1,0 +1,283 @@
+# By default, Julia/LLVM does not use fused multiply-add operations (FMAs).
+# Since these FMAs can increase the performance of many numerical algorithms,
+# we need to opt-in explicitly.
+# See https://ranocha.de/blog/Optimizing_EC_Trixi for further details.
+@muladd begin
+#! format: noindent
+
+# this method is directly used when the indicator is constructed as for shock-capturing volume integrals
+# and by the dimension-independent method called for AMR
+function create_cache(::Type{IndicatorHennemannGassner},
+                      equations::AbstractEquations{3}, basis::LobattoLegendreBasis)
+    uEltype = real(basis)
+    alpha = Vector{uEltype}()
+    alpha_tmp = similar(alpha)
+
+    A3d = Array{uEltype, 3}
+
+    indicator_threaded = A3d[A3d(undef,
+                                 nnodes(basis), nnodes(basis), nnodes(basis))
+                             for _ in 1:Threads.maxthreadid()]
+    modal_threaded = A3d[A3d(undef,
+                             nnodes(basis), nnodes(basis), nnodes(basis))
+                         for _ in 1:Threads.maxthreadid()]
+    modal_tmp1_threaded = A3d[A3d(undef,
+                                  nnodes(basis), nnodes(basis), nnodes(basis))
+                              for _ in 1:Threads.maxthreadid()]
+    modal_tmp2_threaded = A3d[A3d(undef,
+                                  nnodes(basis), nnodes(basis), nnodes(basis))
+                              for _ in 1:Threads.maxthreadid()]
+
+    return (; alpha, alpha_tmp, indicator_threaded, modal_threaded,
+            modal_tmp1_threaded, modal_tmp2_threaded)
+end
+
+# Use this function barrier and unpack inside to avoid passing closures to Polyester.jl
+# with @batch (@threaded).
+# Otherwise, @threaded does not work here with Julia ARM on macOS.
+# See https://github.com/JuliaSIMD/Polyester.jl/issues/88.
+@inline function calc_indicator_hennemann_gassner!(indicator_hg, threshold, parameter_s,
+                                                   u, element, mesh::AbstractMesh{3},
+                                                   equations, dg, cache)
+    @unpack alpha_max, alpha_min, alpha_smooth, variable = indicator_hg
+    @unpack alpha, alpha_tmp, indicator_threaded, modal_threaded,
+    modal_tmp1_threaded, modal_tmp2_threaded = indicator_hg.cache
+
+    indicator = indicator_threaded[Threads.threadid()]
+    modal = modal_threaded[Threads.threadid()]
+    modal_tmp1 = modal_tmp1_threaded[Threads.threadid()]
+    modal_tmp2 = modal_tmp2_threaded[Threads.threadid()]
+
+    # Calculate indicator variables at Gauss-Lobatto nodes
+    for k in eachnode(dg), j in eachnode(dg), i in eachnode(dg)
+        u_local = get_node_vars(u, equations, dg, i, j, k, element)
+        indicator[i, j, k] = indicator_hg.variable(u_local, equations)
+    end
+
+    # Convert to modal representation
+    multiply_scalar_dimensionwise!(modal, dg.basis.inverse_vandermonde_legendre,
+                                   indicator, modal_tmp1, modal_tmp2)
+
+    # Calculate total energies without two highest, without highest, and for all modes
+    total_energy_clip2 = zero(eltype(modal))
+    for k in 1:(nnodes(dg) - 2), j in 1:(nnodes(dg) - 2), i in 1:(nnodes(dg) - 2)
+        total_energy_clip2 += modal[i, j, k]^2
+    end
+
+    total_energy_clip1 = copy(total_energy_clip2)
+    # Add k = N-1 face: i, j in 1:(N-1)
+    for j in 1:(nnodes(dg) - 1), i in 1:(nnodes(dg) - 1)
+        total_energy_clip1 += modal[i, j, nnodes(dg) - 1]^2
+    end
+    # Add j = N-1 face: i in 1:(N-1), k in 1:(N-2)  (k=N-1 already added above)
+    for k in 1:(nnodes(dg) - 2), i in 1:(nnodes(dg) - 1)
+        total_energy_clip1 += modal[i, nnodes(dg) - 1, k]^2
+    end
+    # Add i = N-1 face: j, k in 1:(N-2)  (j=N-1 and k=N-1 already added above)
+    for k in 1:(nnodes(dg) - 2), j in 1:(nnodes(dg) - 2)
+        total_energy_clip1 += modal[nnodes(dg) - 1, j, k]^2
+    end
+
+    total_energy = copy(total_energy_clip1)
+    # Add k = N face: i, j in 1:N
+    for j in 1:nnodes(dg), i in 1:nnodes(dg)
+        total_energy += modal[i, j, nnodes(dg)]^2
+    end
+    # Add j = N face: i in 1:N, k in 1:(N-1)  (k=N already added above)
+    for k in 1:(nnodes(dg) - 1), i in 1:nnodes(dg)
+        total_energy += modal[i, nnodes(dg), k]^2
+    end
+    # Add i = N face: j, k in 1:(N-1)  (j=N and k=N already added above)
+    for k in 1:(nnodes(dg) - 1), j in 1:(nnodes(dg) - 1)
+        total_energy += modal[nnodes(dg), j, k]^2
+    end
+
+    # Calculate energy in higher modes
+    if !(iszero(total_energy))
+        energy_frac_1 = (total_energy - total_energy_clip1) / total_energy
+    else
+        energy_frac_1 = zero(total_energy)
+    end
+    if !(iszero(total_energy_clip1))
+        energy_frac_2 = (total_energy_clip1 - total_energy_clip2) / total_energy_clip1
+    else
+        energy_frac_2 = zero(total_energy_clip1)
+    end
+    energy = max(energy_frac_1, energy_frac_2)
+
+    alpha_element = 1 / (1 + exp(-parameter_s / threshold * (energy - threshold)))
+
+    # Take care of the case close to pure DG
+    if alpha_element < alpha_min
+        alpha_element = zero(alpha_element)
+    end
+
+    # Take care of the case close to pure FV
+    if alpha_element > 1 - alpha_min
+        alpha_element = one(alpha_element)
+    end
+
+    # Clip the maximum amount of FV allowed
+    alpha[element] = min(alpha_max, alpha_element)
+    return nothing
+end
+
+function apply_smoothing!(mesh::Union{TreeMesh{3}, P4estMesh{3}, T8codeMesh{3}}, alpha,
+                          alpha_tmp, dg,
+                          cache)
+
+    # Diffuse alpha values by setting each alpha to at least 50% of neighboring elements' alpha
+    # Copy alpha values such that smoothing is indpedenent of the element access order
+    alpha_tmp .= alpha
+
+    # Loop over interfaces
+    for interface in eachinterface(dg, cache)
+        # Get neighboring element ids
+        left = cache.interfaces.neighbor_ids[1, interface]
+        right = cache.interfaces.neighbor_ids[2, interface]
+
+        # Apply smoothing
+        alpha[left] = max(alpha_tmp[left], 0.5f0 * alpha_tmp[right], alpha[left])
+        alpha[right] = max(alpha_tmp[right], 0.5f0 * alpha_tmp[left], alpha[right])
+    end
+
+    # Loop over L2 mortars
+    for mortar in eachmortar(dg, cache)
+        # Get neighboring element ids
+        lower_left = cache.mortars.neighbor_ids[1, mortar]
+        lower_right = cache.mortars.neighbor_ids[2, mortar]
+        upper_left = cache.mortars.neighbor_ids[3, mortar]
+        upper_right = cache.mortars.neighbor_ids[4, mortar]
+        large = cache.mortars.neighbor_ids[5, mortar]
+
+        # Apply smoothing
+        alpha[lower_left] = max(alpha_tmp[lower_left], 0.5f0 * alpha_tmp[large],
+                                alpha[lower_left])
+        alpha[lower_right] = max(alpha_tmp[lower_right], 0.5f0 * alpha_tmp[large],
+                                 alpha[lower_right])
+        alpha[upper_left] = max(alpha_tmp[upper_left], 0.5f0 * alpha_tmp[large],
+                                alpha[upper_left])
+        alpha[upper_right] = max(alpha_tmp[upper_right], 0.5f0 * alpha_tmp[large],
+                                 alpha[upper_right])
+
+        alpha[large] = max(alpha_tmp[large], 0.5f0 * alpha_tmp[lower_left],
+                           alpha[large])
+        alpha[large] = max(alpha_tmp[large], 0.5f0 * alpha_tmp[lower_right],
+                           alpha[large])
+        alpha[large] = max(alpha_tmp[large], 0.5f0 * alpha_tmp[upper_left],
+                           alpha[large])
+        alpha[large] = max(alpha_tmp[large], 0.5f0 * alpha_tmp[upper_right],
+                           alpha[large])
+    end
+
+    return nothing
+end
+
+# this method is directly used when the indicator is constructed as for shock-capturing volume integrals
+# and by the dimension-independent method called for AMR
+function create_cache(::Union{Type{IndicatorLöhner}, Type{IndicatorMax}},
+                      equations::AbstractEquations{3}, basis::LobattoLegendreBasis)
+    uEltype = real(basis)
+    alpha = Vector{uEltype}()
+
+    A3d = Array{uEltype, 3}
+    indicator_threaded = A3d[A3d(undef, nnodes(basis), nnodes(basis), nnodes(basis))
+                             for _ in 1:Threads.maxthreadid()]
+
+    return (; alpha, indicator_threaded)
+end
+
+function (löhner::IndicatorLöhner)(u::AbstractArray{<:Any, 5},
+                                   mesh, equations, dg::DGSEM, cache;
+                                   kwargs...)
+    @assert nnodes(dg)>=3 "IndicatorLöhner only works for nnodes >= 3 (polydeg > 1)"
+    @unpack alpha, indicator_threaded = löhner.cache
+    @unpack variable = löhner
+    resize!(alpha, nelements(dg, cache))
+
+    @threaded for element in eachelement(dg, cache)
+        indicator = indicator_threaded[Threads.threadid()]
+
+        # Calculate indicator variables at Gauss-Lobatto nodes
+        for k in eachnode(dg), j in eachnode(dg), i in eachnode(dg)
+            u_local = get_node_vars(u, equations, dg, i, j, k, element)
+            indicator[i, j, k] = variable(u_local, equations)
+        end
+
+        estimate = zero(real(dg))
+        for k in eachnode(dg), j in eachnode(dg), i in 2:(nnodes(dg) - 1)
+            # x direction
+            u0 = indicator[i, j, k]
+            up = indicator[i + 1, j, k]
+            um = indicator[i - 1, j, k]
+            estimate = max(estimate, local_löhner_estimate(um, u0, up, löhner))
+        end
+
+        for k in eachnode(dg), j in 2:(nnodes(dg) - 1), i in eachnode(dg)
+            # y direction
+            u0 = indicator[i, j, k]
+            up = indicator[i, j + 1, k]
+            um = indicator[i, j - 1, k]
+            estimate = max(estimate, local_löhner_estimate(um, u0, up, löhner))
+        end
+
+        for k in 2:(nnodes(dg) - 1), j in eachnode(dg), i in eachnode(dg)
+            # y direction
+            u0 = indicator[i, j, k]
+            up = indicator[i, j, k + 1]
+            um = indicator[i, j, k - 1]
+            estimate = max(estimate, local_löhner_estimate(um, u0, up, löhner))
+        end
+
+        # use the maximum as DG element indicator
+        alpha[element] = estimate
+    end
+
+    return alpha
+end
+
+function (indicator_max::IndicatorMax)(u::AbstractArray{<:Any, 5},
+                                       mesh, equations, dg::DGSEM, cache;
+                                       kwargs...)
+    @unpack alpha, indicator_threaded = indicator_max.cache
+    resize!(alpha, nelements(dg, cache))
+    indicator_variable = indicator_max.variable
+
+    @threaded for element in eachelement(dg, cache)
+        indicator = indicator_threaded[Threads.threadid()]
+
+        # Calculate indicator variables at Gauss-Lobatto nodes
+        for k in eachnode(dg), j in eachnode(dg), i in eachnode(dg)
+            u_local = get_node_vars(u, equations, dg, i, j, k, element)
+            indicator[i, j, k] = indicator_variable(u_local, equations)
+        end
+
+        alpha[element] = maximum(indicator)
+    end
+
+    return alpha
+end
+
+function (indicator::IndicatorNodalFunction)(u::AbstractArray{<:Any, 5},
+                                             mesh, equations, dg::DGSEM, cache;
+                                             t, kwargs...)
+    node_coordinates = cache.elements.node_coordinates
+    @unpack alpha = indicator.cache
+    resize!(alpha, nelements(dg, cache))
+    # Extract function to local variable to avoid capturing `indicator` in the threaded loop
+    indicator_function = indicator.indicator_function
+
+    @threaded for element in eachelement(dg, cache)
+        estimate = typemin(eltype(alpha))
+        for k in eachnode(dg), j in eachnode(dg), i in eachnode(dg)
+            u_nodal = get_node_vars(u, equations, dg, i, j, k, element)
+            x_nodal = get_node_coords(node_coordinates, equations, dg,
+                                      i, j, k, element)
+            estimate = max(estimate,
+                           indicator_function(u_nodal, x_nodal, t))
+        end
+        alpha[element] = estimate
+    end
+    return alpha
+end
+end # @muladd

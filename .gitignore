@@ -1,0 +1,37 @@
+# Large binaries and runtimes
+tools/
+*.tar.gz
+*.zip
+
+# Simulation and training outputs
+outputs/
+experiments/outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Julia
+Manifest.toml.bak
+
+# Data artifacts
+*.npz
+*.h5
+*.vtu
+*.gif
+*.pt
+*.png
+!experiments/**/*.png
+
+# Logs and temp
+*.log
+.DS_Store
+*.swp
+*~
+
+# IDE
+.idea/
+.vscode/

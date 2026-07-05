@@ -10,7 +10,7 @@
 #   KH_N_MEMBERS=200   KH_STEP_REL_EPS=3e-4   KH_SAVE_DT=0.2
 #   KH_KEEP_H5=1       keep solution H5 in member_*/vtu/ (default on)
 #   KH_DELETE_VTU=1    remove vtu_converted after export (default on, saves ~90MB/member)
-#   KH_CLEAN=1         wipe output dir before starting
+#   KH_START_MEMBER=186  start from member N (default 1)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 TRIXI="$ROOT/experiments/kelvin_helmholtz/trixi"
@@ -26,6 +26,7 @@ export KH_AMR=1
 export KH_T_END=5.0
 export KH_IC_SEED=1
 export KH_N_MEMBERS="${KH_N_MEMBERS:-200}"
+KH_START_MEMBER="${KH_START_MEMBER:-1}"
 export KH_SAVE_INTERVAL=40
 export KH_SAVE_DT="${KH_SAVE_DT:-0.2}"
 export KH_STEP_REL_EPS="${KH_STEP_REL_EPS:-3e-4}"
@@ -44,11 +45,11 @@ if [[ "${KH_CLEAN:-0}" == "1" ]]; then
 fi
 
 {
-echo "=== $(date -Iseconds) ensemble ${KH_N_MEMBERS} members t=0→${KH_T_END}s save_dt=${KH_SAVE_DT} eps=${KH_STEP_REL_EPS} keep_h5=${KEEP_H5} ==="
+echo "=== $(date -Iseconds) ensemble ${KH_N_MEMBERS} members (start=${KH_START_MEMBER}) t=0→${KH_T_END}s save_dt=${KH_SAVE_DT} eps=${KH_STEP_REL_EPS} keep_h5=${KEEP_H5} ==="
 
 done=0
 skipped=0
-for m in $(seq 1 "$KH_N_MEMBERS"); do
+for m in $(seq "$KH_START_MEMBER" "$KH_N_MEMBERS"); do
   mm=$(printf '%03d' "$m")
   member_dir="$OUT/member_${mm}"
   out_npz="$member_dir/member_${mm}_${GRID_N}x4.npz"

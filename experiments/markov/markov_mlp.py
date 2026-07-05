@@ -162,12 +162,19 @@ def plot_matrices(
     P_true: np.ndarray,
     P_rmse: np.ndarray,
     P_soft: np.ndarray,
-    rmse_model: MLP_RMSE,
+    rmse_model: MLP_RMSE | None = None,
+    *,
+    fig_index: int | None = None,
+    figs_dir: Path | None = None,
 ) -> None:
     n_states = len(states)
     tag = f"{n_states}×{n_states}"
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    titles = [f"True P ({tag})", "MLP+RMSE (nearest)", "MLP+softmax"]
+    titles = [f"True $P$ ({tag})", "MLP (RMSE)", "MLP (Cross-Entropy)"]
+    title_fs = 16
+    suptitle_fs = 17
+    label_fs = 18
+    tick_fs = 12
     vmax = max(0.08, float(P_true.max()))
     tick_idx = np.linspace(0, n_states - 1, min(6, n_states), dtype=int)
 
@@ -176,22 +183,28 @@ def plot_matrices(
 
     for ax, P, title in zip(axes, [P_true, P_rmse, P_soft], titles):
         im = ax.imshow(P, vmin=0, vmax=vmax, cmap="viridis", aspect="equal", origin="upper")
-        ax.set_title(title, fontsize=10)
-        ax.set_xticks(tick_idx, tick_labels(tick_idx), fontsize=7, rotation=45)
-        ax.set_yticks(tick_idx, tick_labels(tick_idx), fontsize=7)
-        ax.set_xlabel("$s_{t+1}$")
-        ax.set_ylabel("$s_t$")
+        ax.set_title(title, fontsize=title_fs, fontweight="medium")
+        ax.set_xticks(tick_idx, tick_labels(tick_idx), fontsize=tick_fs, rotation=45)
+        ax.set_yticks(tick_idx, tick_labels(tick_idx), fontsize=tick_fs)
+        ax.set_xlabel("$x_{t+1}$", fontsize=label_fs)
+        ax.set_ylabel("$x_t$", fontsize=label_fs)
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
-    fig.suptitle(f"Markov transition matrices ({tag})", fontsize=12)
+    fig.suptitle(f"Markov transition matrices ({tag})", fontsize=suptitle_fs, fontweight="bold")
     fig.tight_layout()
     fig.savefig(out_dir / "transition_matrices.png", dpi=160, bbox_inches="tight")
+    if figs_dir is not None and fig_index is not None:
+        figs_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(figs_dir / f"transition_matrices_{fig_index}.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
+
+    if rmse_model is None:
+        return
 
     with torch.no_grad():
         preds = rmse_model(torch.from_numpy(states).float().to(DEVICE)).cpu().numpy()
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(states, preds, "o-", ms=4, lw=1.2, label="MLP+RMSE $\\mu(s)$")
+    ax.plot(states, preds, "o-", ms=4, lw=1.2, label="MLP (RMSE) $\\mu(s)$")
     ax.plot(states, states, "--", color="gray", label="identity")
     ax.set_xlabel("$s_t$")
     ax.set_ylabel("predicted $\\mu$")
@@ -201,6 +214,26 @@ def plot_matrices(
     fig.tight_layout()
     fig.savefig(out_dir / "rmse_scalar_predictions.png", dpi=140)
     plt.close(fig)
+
+
+def replot_from_npz(out_root: Path, sizes: list[int], figs_dir: Path | None = None) -> None:
+    """Regenerate transition-matrix figures from saved NPZ without retraining."""
+    for i, n in enumerate(sizes, start=1):
+        npz_path = out_root / f"n{n}" / "transition_matrices.npz"
+        if not npz_path.exists():
+            raise FileNotFoundError(npz_path)
+        data = np.load(npz_path)
+        plot_matrices(
+            out_root / f"n{n}",
+            data["states"],
+            data["P_true"],
+            data["P_mlp_rmse"],
+            data["P_mlp_softmax"],
+            rmse_model=None,
+            fig_index=i,
+            figs_dir=figs_dir,
+        )
+        print(f"Replotted n={n} -> transition_matrices_{i}.png")
 
 
 def run_one(
@@ -289,7 +322,16 @@ def run_one(
     with open(out_dir / "metrics.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
 
-    plot_matrices(out_dir, states, P_true, P_rmse, P_soft, m_rmse)
+    plot_matrices(
+        out_dir,
+        states,
+        P_true,
+        P_rmse,
+        P_soft,
+        m_rmse,
+        fig_index={3: 1, 10: 2, 100: 3}.get(n_states),
+        figs_dir=ROOT / "Figs",
+    )
     print(f"Saved to {out_dir}")
     return metrics
 
@@ -302,11 +344,25 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=None)
     p.add_argument("--samples", type=int, default=None)
     p.add_argument("--out-root", type=Path, default=ROOT / "outputs" / "markov")
+    p.add_argument(
+        "--replot-only",
+        action="store_true",
+        help="Regenerate figures from saved NPZ (no retraining)",
+    )
+    p.add_argument(
+        "--figs-dir",
+        type=Path,
+        default=ROOT / "Figs",
+        help="Directory for transition_matrices_1/2/3.png",
+    )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.replot_only:
+        replot_from_npz(args.out_root, args.sizes, figs_dir=args.figs_dir)
+        return
     summary = {}
     for n in args.sizes:
         summary[str(n)] = run_one(

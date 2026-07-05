@@ -27,15 +27,20 @@ Primary backend is **Julia/Trixi** for simulation; **PyTorch U-Net** for one-ste
 | Train U-Net | `experiments/kelvin_helmholtz/train_unet.py` |
 | Eval (rollout + spectra) | `experiments/kelvin_helmholtz/eval_unet.py` |
 | Paper figures | `experiments/kelvin_helmholtz/make_paper_figures.py` |
-| Full U-Net pipeline | `experiments/kelvin_helmholtz/run_unet_pipeline.sh` or `python run_kh_pipeline.py` |
+| Full U-Net pipeline | `python run_kh_pipeline.py` or `run_unet_pipeline.sh` |
 | U-Net model | `experiments/common/models.py` (`UNet`, `radial_energy`) |
 | Colormap | `experiments/kelvin_helmholtz/kh_colormap.py` |
 
 ### U-Net task (current spec)
 
 - **Input / output:** previous frame → next frame, shape `(4, 512, 512)` for `(ρ, v₁, v₂, p)`
-- **Loss:** global per-pixel RMSE on normalized fields
-- **Split:** 200 members → **180 train / 20 test** (`split.json`, seed=42)
+- **Model:** U-Net, `base_ch=32`, **~1.93M parameters**
+- **Loss:** global per-pixel RMSE on normalized fields (mean/std from **train only**)
+- **Split (200 members, seed=42):** `split_members_three_way` → **170 train / 10 val / 20 test**
+  - Val: early stopping in `train_unet.py` only
+  - Test: `eval_unet.py` and paper figures — **never used in training**
+  - Saved in `split.json` as `train_ids`, `val_ids`, `test_ids`
+- **Train sampling:** `RandomOneStepDataset` — random member + consecutive `(t, t+1)` each step
 - **Eval metrics:**
   - one-step and long autoregressive rollout RMSE vs truth member
   - rollout vs **ensemble mean** (Monte Carlo conditional mean)
@@ -44,6 +49,36 @@ Primary backend is **Julia/Trixi** for simulation; **PyTorch U-Net** for one-ste
 - **Outputs:** `outputs/kelvin_helmholtz/unet_mse/` (checkpoints, `split.json`, `eval/`)
 
 Default sim: **ref=5 + AMR**, stochastic per-step noise `step_rel_eps=3e-4`, `save_dt=0.2`, `t_end=5`.
+
+### Data & memory
+
+| Item | Value |
+|------|-------|
+| 200-member disk total | ~19 GB (NPZ ~15 GB + H5 ~5 GB if `KH_KEEP_H5=1`) |
+| Frames per member | typically 16–26 (may DtNaN before 5 s) |
+| Train pairs | ~3600 |
+| **Do not build unified `.pt`** on user's machine | OOM risk (~13 GB RAM to hold 170 NPZ + build overhead) |
+
+Train from NPZ directly:
+
+```bash
+python3 experiments/kelvin_helmholtz/train_unet.py \
+  --data-dir outputs/kelvin_helmholtz/trixi_ensemble_200 \
+  --max-members 200 --n-val 10 --n-test 20 \
+  --random-train --batch-size 2 --num-workers 0
+```
+
+Note: `train_unet.py` currently **loads all train members into RAM** at startup via `load_members()`. On 16 GB RAM this is tight (~13 GB). Prefer `batch-size 2`, `num-workers 0`. Lazy per-member loading is a future improvement if OOM occurs.
+
+### Ensemble resume
+
+`run_ensemble_200.sh` skips members that already have `member_XXX_512x4.npz`.
+
+```bash
+KH_START_MEMBER=186 bash experiments/kelvin_helmholtz/trixi/run_ensemble_200.sh
+```
+
+To re-run one member from scratch: delete its `member_XXX/` directory first.
 
 ## Visualization rules (important)
 
@@ -63,6 +98,7 @@ Results: `outputs/markov/summary.json`
 ## Removed / out of scope
 
 - **Cylinder wake experiment** — dropped; do not recreate unless user asks.
+- **Unified `.pt` dataset packing** — user opted out due to RAM; scripts exist (`build_unet_pt.py`, `pack_unet_dataset.py`) but are not the default workflow.
 
 ## Python KH fallback
 
@@ -71,9 +107,11 @@ Results: `outputs/markov/summary.json`
 ## Common pitfalls
 
 - Ensemble members may **DtNaN before 5 s** — per-member NPZ keeps all survived frames; train/eval use whatever frames exist.
-- `train_unet.py` needs **≥21 members** with `512x4.npz` before training (180/20 split).
+- `train_unet.py` needs **≥31 members** before training (170 + 10 + 20 split with at least 1 extra buffer).
+- Do **not** confuse `val_ids` (10, tuning) with `test_ids` (20, final eval). Legacy `split.json` files may only have `test_ids` (= old val set).
 - Re-export one member: `export_one_member_4var.jl` + `export_unet_grid.py --member-id N`.
 - Only commit when user explicitly asks.
+- GitHub remote: `https://github.com/DYHAI/GRL_possibility` — `outputs/`, `*.npz`, `*.h5`, `tools/` are gitignored.
 
 ## Repo layout
 
@@ -84,14 +122,14 @@ GRL_possibility/
 │   ├── common/models.py       # UNet, radial_energy
 │   ├── markov/
 │   └── kelvin_helmholtz/
-│       ├── kh_dataset.py
+│       ├── kh_dataset.py      # split_members_three_way, datasets
 │       ├── train_unet.py
 │       ├── eval_unet.py
 │       ├── make_paper_figures.py
 │       ├── run_unet_pipeline.sh
 │       └── trixi/             # Julia backend
-├── tools/julia-1.11.9/
-└── outputs/
+├── tools/julia-1.11.9/        # gitignored
+└── outputs/                   # gitignored
     ├── markov/
     └── kelvin_helmholtz/
         ├── trixi_ensemble_200/

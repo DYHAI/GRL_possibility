@@ -1,0 +1,16 @@
+% Data Availability Statement
+
+\section*{Data Availability Statement}
+
+All source codes used in this study are publicly available at
+\url{https://github.com/DYHAI/GRL_possibility}.
+
+The Kelvin--Helmholtz experiments are solved using the Julia \textsc{Trixi} framework.
+Project scripts are in \texttt{experiments/kelvin\_helmholtz/trixi/}.
+Ensemble members are generated with shared initial conditions and per-step stochastic perturbations; each member is exported to \texttt{member\_XXX/member\_XXX\_512x4.npz} ($512\times512$ grids of $\rho,v_1,v_2,p$).
+Due to size ($\sim$19\,GB for 200 members), raw ensemble data are not archived in the Git repository; they can be reproduced with \texttt{run\_ensemble\_200.sh}.
+
+Markov experiment outputs are in \texttt{outputs/markov/}.
+Paper notes and LaTeX fragments are in \texttt{paper/}.
+
+Julia \url{https://julialang.org/}; Trixi \url{https://github.com/trixi-framework/Trixi.jl}.

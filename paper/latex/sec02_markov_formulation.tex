@@ -1,0 +1,24 @@
+% Section 2 — Markov formulation
+
+\subsection{Markov formulation of atmospheric and oceanic forecasting}
+\label{subsec:markov_formulation}
+
+Atmospheric and oceanic evolution can be approximated as a discrete-time Markov process.
+Let the system state at time $t$ be denoted by $\mathbf{X}_t \in \mathcal{S}$,
+where $\mathcal{S}$ represents the joint phase space of model variables on a grid.
+The one-step transition law is
+\begin{equation}
+    \mathbb{P}\!\left(\mathbf{X}_{t+\Delta t} \in \mathcal{A}\,\middle|\,\mathbf{X}_t, \mathbf{X}_{t-\Delta t}, \ldots \right)
+    = \mathbb{P}\!\left(\mathbf{X}_{t+\Delta t} \in \mathcal{A}\,\middle|\,\mathbf{X}_t \right),
+    \qquad \forall \mathcal{A} \subseteq \mathcal{S},
+    \label{eq:markov_property}
+\end{equation}
+which states that all predictive information for the next state is contained in the present state.
+When $\mathcal{S}$ is continuous, the transition is described by a conditional density
+$p(\mathbf{x}_{t+\Delta t}\mid \mathbf{x}_t)$; when $\mathcal{S}$ is finite with states
+$\{s^{(1)},\ldots,s^{(K)}\}$, it is a row-stochastic matrix $P$ with entries
+$P_{ij}=\mathbb{P}(S_{t+\Delta t}=s^{(j)}\mid S_t=s^{(i)})$.
+
+Contemporary deterministic AI weather and ocean models (e.g., Pangu-Weather, FuXi, GraphCast)
+learn a parametric map $\mathcal{M}_{\boldsymbol{\theta}}(\mathbf{x}_t)\approx \mathbf{x}_{t+\Delta t}$
+by minimizing an empirical mean squared error through backpropagation.

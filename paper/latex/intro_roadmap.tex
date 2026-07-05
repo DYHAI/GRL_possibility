@@ -1,0 +1,11 @@
+% Paste into Introduction (end of Sec. 1)
+
+Section~2 develops the theoretical basis of this study.
+We treat atmospheric and oceanic evolution as a discrete-time Markov process and show that deterministic AI models trained with RMSE/MSE, such as Pangu-Weather, FuXi, and GraphCast, learn the conditional mean
+$\mathbb{E}[\mathbf{X}_{t+\Delta t}\mid \mathbf{X}_t]$
+rather than the full transition law $p(\mathbf{x}_{t+\Delta t}\mid \mathbf{x}_t)$.
+We then explain why this probabilistic mean field systematically underestimates extremes and high-frequency variability, and prove that it is not, in general, a solution of the original nonlinear governing equations---so physical non-conservation is a structural consequence of RMSE-optimal deterministic forecasting, not merely a data or architecture limitation.
+
+Section~3 describes two experiments: a controlled Markov transition-matrix test and a Kelvin--Helmholtz instability ensemble solved with the Julia \textsc{Trixi} framework, followed by a U-Net one-step forecaster trained on $512\times512$ four-field snapshots.
+
+Section~4 interprets the results through the lens of conditional expectation, emphasizing spectral smoothing, tail underestimation, and dynamical non-closure.

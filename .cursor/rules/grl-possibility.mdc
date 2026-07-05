@@ -5,13 +5,15 @@ alwaysApply: true
 
 # GRL_possibility
 
-Paper: RMSE/MSE forecasting ≈ conditional mean → over-smoothing.
+Paper: RMSE/MSE forecasting ≈ conditional mean → over-smoothing, underestimated extremes, non-closure.
 
-**Active:** Kelvin–Helmholtz via Julia/Trixi → PyTorch U-Net (`512×512×4`, RMSE loss, 180/20 split). **Done:** Markov.
+**Paper notes:** `paper/MEMORY.md` (中文记忆), `paper/latex/` (LaTeX fragments), `paper/figures.md`.
+
+**Active:** Kelvin–Helmholtz via Julia/Trixi → PyTorch U-Net (`512×512×4`, RMSE, **170/10/20 split**). **Done:** Markov.
 
 - Julia: `tools/julia-1.11.9/bin/julia` + `experiments/kelvin_helmholtz/trixi/`
 - Ensemble data: `outputs/kelvin_helmholtz/trixi_ensemble_200/member_*/*512x4.npz`
 - U-Net: `train_unet.py`, `eval_unet.py` (rollout + high-k spectrum), `run_unet_pipeline.sh`
 - Figures: single full-domain panel, `kh_colormap.py`, no zoom inset
 - **No cylinder experiment** — out of scope
-- See `AGENTS.md` and `README.md`
+- See `AGENTS.md`, `README.md`, and **`paper/MEMORY.md`**

@@ -237,4 +237,4 @@ pip install -r requirements.txt
 
 ## Agent notes
 
-See [`AGENTS.md`](AGENTS.md) for Cursor/agent context (paths, pitfalls, current focus).
+See [`AGENTS.md`](AGENTS.md) for Cursor/agent context. **Paper memory:** [`paper/MEMORY.md`](paper/MEMORY.md).

@@ -1,0 +1,19 @@
+% Section 3 — Markov experiment
+
+\subsection{Markov transition-matrix experiment}
+\label{subsec:markov_methods}
+
+To validate Proposition~\ref{prop:mse_conditional_mean} in a controlled setting, we represent atmospheric/oceanic evolution by a finite-state Markov chain with
+$K\in\{3,10,100\}$ states $s^{(j)}$ uniformly spaced on $[-1,1]$.
+A row-stochastic matrix $P\in\mathbb{R}^{K\times K}$ defines the true one-step law
+$P_{ij}=\mathbb{P}(S_{t+\Delta t}=s^{(j)}\mid S_t=s^{(i)})$.
+
+We train two multilayer perceptrons on pairs $(s_t,s_{t+\Delta t})$ sampled from long Markov trajectories:
+\begin{itemize}
+    \item \textbf{MLP (RMSE):} scalar regression to the next state (nearest-grid evaluation for matrix comparison).
+    \item \textbf{MLP (Cross-Entropy):} predicts the full transition row via softmax, preserving normalization.
+\end{itemize}
+We compare per-row RMSE against the true conditional mean row and KL divergence against the true transition probabilities.
+Code: \texttt{experiments/markov/markov\_mlp.py}; figures: \texttt{Figs/transition\_matrices\_\{1,2,3\}.png}.
+
+Expected outcome: comparable RMSE, but cross-entropy preserves the transition law (low KL) whereas RMSE recovers only scalar conditional means (high KL).

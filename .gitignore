@@ -25,6 +25,7 @@ Manifest.toml.bak
 *.pt
 *.png
 !experiments/**/*.png
+!Figs/**/*.png
 
 # Logs and temp
 *.log

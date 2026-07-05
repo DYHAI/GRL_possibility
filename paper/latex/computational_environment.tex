@@ -1,0 +1,8 @@
+% Computational environment (Methods or Acknowledgments)
+
+\subsection{Computational environment}
+
+Python 3.13.11; PyTorch 2.12.1 (CUDA 13.0).
+U-Net training and evaluation on a laptop with Intel Core i7-13620H CPU, NVIDIA GeForce RTX 4060 Laptop GPU (8\,GB), and 16\,GB RAM.
+KH ensemble simulations use Julia 1.11.9 with the \textsc{Trixi} package (local project \texttt{experiments/kelvin\_helmholtz/trixi/}).
+Typical wall time: $\sim$15--25 minutes per ensemble member; U-Net training (30 epochs, 170 training members) $\sim$4--10 hours.

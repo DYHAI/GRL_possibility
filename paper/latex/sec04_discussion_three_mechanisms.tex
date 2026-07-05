@@ -1,0 +1,35 @@
+% Section 4 — Three mechanisms (Results and Discussion core)
+
+\section{Results and Discussion}
+\label{sec:results_discussion}
+
+The Markov and KH experiments provide complementary checks of Proposition~\ref{prop:mse_conditional_mean}.
+In Markov space, MSE-trained networks recover scalar conditional means while cross-entropy-trained networks recover full transition rows (similar RMSE, very different KL).
+In KH space, the same mean-seeking behavior appears in a nonlinear fluid system.
+Below we interpret both experiments through three structural consequences of targeting $\mathbb{E}[\mathbf{X}_{t+\Delta t}\mid \mathbf{X}_t]$.
+
+\subsection{High-frequency spectral dissipation (over-smoothing)}
+\label{subsec:oversmoothing}
+
+Because $g^\star(\mathbf{x}_t)=\mathbb{E}[\mathbf{X}_{t+\Delta t}\mid \mathbf{x}_t]$ averages over many possible future realizations of a chaotic flow, fine-scale structures with random phase are destructively superposed.
+In Fourier space, averaging acts as a low-pass filter: high-wavenumber energy in the forecast is systematically reduced relative to any single truth trajectory.
+In the KH experiment this appears as a \emph{high-$k$ power ratio} (forecast/truth) below unity that worsens with autoregressive rollout length (Fig.~\ref{fig:highk}).
+The U-Net forecast should resemble the ensemble mean more closely than the truth member in spectral tail metrics.
+
+\subsection{Underestimation of extremes}
+\label{subsec:extremes}
+
+In discrete Markov form, $g^\star(s^{(i)})=\sum_j P_{ij}s^{(j)}$ pulls rare large values toward climatology.
+Extreme events occupy the long tail of $p(\mathbf{x}_{t+\Delta t}\mid \mathbf{x}_t)$; their contribution is diluted by high-probability moderate states.
+We quantify this via domain-maximum $\rho$ peak ratios (forecast/truth $<1$), pooled tail exceedance $P(\rho\ge\tau)$, and conditional high-tail bias on pixels where truth $\rho$ exceeds the training 95th percentile.
+RMSE-optimal forecasts should underpredict both peak amplitude and tail probability relative to truth, while tracking the ensemble mean.
+
+\subsection{Violation of nonlinear conservation (non-closure)}
+\label{subsec:nonconservation}
+
+Nonlinear governing equations (Euler, Navier--Stokes) propagate \emph{individual} sample paths.
+The conditional mean field satisfies Eq.~\eqref{eq:closure_error} with nonzero closure error $R$ (Proposition~\ref{prop:nonlinear_nonclosure}).
+By Jensen's inequality (Remark~\ref{rem:jensen}), nonlinear functionals such as kinetic energy evaluated on the mean differ from the mean of the functional along trajectories.
+Thus RMSE-optimal deterministic forecasts can exhibit good bulk RMSE while failing to respect nonlinear conservation structure---a limitation inherent to learning $\mathbb{E}[\mathbf{X}\mid\cdot]$, not merely insufficient data or model capacity.
+
+% TODO: insert \ref{fig:...} once figure labels are fixed in main manuscript

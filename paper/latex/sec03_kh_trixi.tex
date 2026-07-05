@@ -1,0 +1,17 @@
+% Section 3 — KH Trixi ensemble
+
+\subsection{Kelvin--Helmholtz instability ensemble (Trixi)}
+\label{subsec:kh_methods}
+
+We simulate two-dimensional compressible Euler Kelvin--Helmholtz (KH) instability on $[-1,1]^2$ with periodic boundaries using the Julia \textsc{Trixi} framework \citep{ranocha2022trixi}.
+The spatial discretization is a nodal discontinuous Galerkin spectral element method (DGSEM, polynomial degree $p=3$) with Hennemann--Gassner shock capturing and adaptive mesh refinement (AMR), following the standard elixir \texttt{elixir\_euler\_kelvin\_helmholtz\_instability\_amr.jl}.
+
+To generate an ensemble of stochastic trajectories with \emph{identical initial conditions}, we inject small relative noise at each time step ($\varepsilon_{\mathrm{rel}}=3\times10^{-4}$), yielding a Markov transition
+$\mathbf{x}_{t+\Delta t}=F(\mathbf{x}_t)+\boldsymbol{\eta}_t$.
+Snapshots are saved every $\Delta t=0.2$\,s from $t=0$ to $5$\,s (members may terminate early if the solver fails).
+We generate $N=200$ members; each is exported to a regular $512\times512$ grid with four fields $(\rho,v_1,v_2,p)$ stored as \texttt{member\_XXX/member\_XXX\_512x4.npz}.
+
+Scripts: \texttt{experiments/kelvin\_helmholtz/trixi/run\_ensemble\_200.sh}.
+Resume: \texttt{KH\_START\_MEMBER=N} skips members with existing NPZ.
+
+Train/validation/test split for learning: 170 / 10 / 20 members (seed 42); thresholds for extreme metrics are computed from training members only.

@@ -1,0 +1,18 @@
+% Section 3 — U-Net
+
+\subsection{U-Net one-step forecaster}
+\label{subsec:unet_methods}
+
+We train a convolutional U-Net to map the previous snapshot to the next snapshot on the $512\times512$ four-channel grid:
+$\hat{\mathbf{x}}_{t+\Delta t}=\mathcal{M}_{\boldsymbol{\theta}}(\mathbf{x}_t)$.
+Architecture: encoder--decoder with skip connections, base width 32 channels ($\approx 1.93\times10^6$ parameters).
+Training minimizes global per-pixel RMSE after per-channel normalization (mean and standard deviation computed from training members only).
+
+Optimization: Adam, learning rate $10^{-4}$, batch size 2--4, 30 epochs.
+Each epoch randomly samples a training member and a consecutive frame pair $(t,t+1)$.
+Validation RMSE on 10 held-out members selects the best checkpoint; 20 test members are reserved for final evaluation only.
+
+Evaluation uses autoregressive rollout from the true initial frame, comparing the forecast to (i) the truth member and (ii) the ensemble mean over all 200 members at the same time index (Monte Carlo estimate of the conditional mean).
+Diagnostics include radial power spectra of $\rho$ (high-wavenumber energy ratio), peak amplitude ratios, tail exceedance curves, and vorticity-event counts (\texttt{eval\_unet.py}).
+
+Code: \texttt{experiments/kelvin\_helmholtz/train\_unet.py}, \texttt{eval\_unet.py}.

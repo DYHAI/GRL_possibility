@@ -1,0 +1,60 @@
+% Section 2 — MSE optimality = conditional expectation
+% Requires: \newtheorem{proposition}{Proposition}, \newtheorem{corollary}{Corollary}
+
+\subsection{MSE-optimal forecasting as conditional expectation}
+\label{subsec:mse_conditional_mean}
+
+In the limit of infinite data and sufficient model capacity, empirical MSE minimization converges to the population risk
+\begin{equation}
+    \mathcal{R}(g)
+    =
+    \mathbb{E}\!\left[
+        \left\|
+            \mathbf{X}_{t+\Delta t}
+            -
+            g(\mathbf{X}_t)
+        \right\|_2^2
+    \right],
+    \label{eq:population_mse}
+\end{equation}
+where the expectation is over the joint distribution induced by the Markov dynamics.
+
+\begin{proposition}[MSE-optimal predictor as conditional expectation]
+\label{prop:mse_conditional_mean}
+Let $(\mathbf{X}_t, \mathbf{X}_{t+\Delta t})$ have finite second moments.
+For any measurable deterministic forecast $g:\mathcal{S}\to\mathbb{R}^d$,
+\begin{equation}
+    g^\star(\mathbf{x}_t)
+    =
+    \arg\min_{g}\;
+    \mathbb{E}\!\left[
+        \left\|
+            \mathbf{X}_{t+\Delta t}-g(\mathbf{X}_t)
+        \right\|_2^2
+        \,\middle|\,
+        \mathbf{X}_t=\mathbf{x}_t
+    \right]
+    =
+    \mathbb{E}\!\left[\mathbf{X}_{t+\Delta t}\mid \mathbf{X}_t=\mathbf{x}_t\right].
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Fix $\mathbf{x}_t$ and expand the conditional MSE:
+$\mathbb{E}[\|\mathbf{X}_{t+\Delta t}-g(\mathbf{x}_t)\|^2\mid \mathbf{x}_t]
+=\mathbb{E}[\|\mathbf{X}_{t+\Delta t}-\mathbb{E}[\mathbf{X}_{t+\Delta t}\mid \mathbf{x}_t]\|^2\mid \mathbf{x}_t]
++\|\mathbb{E}[\mathbf{X}_{t+\Delta t}\mid \mathbf{x}_t]-g(\mathbf{x}_t)\|^2$,
+which is minimized uniquely at $g(\mathbf{x}_t)=\mathbb{E}[\mathbf{X}_{t+\Delta t}\mid \mathbf{x}_t]$.
+\end{proof}
+
+\begin{corollary}[Probability-weighted average over future states]
+\label{cor:weighted_average}
+For continuous states,
+$\mathbb{E}[\mathbf{X}_{t+\Delta t}\mid \mathbf{X}_t=\mathbf{x}_t]
+=\int_{\mathcal{S}} \mathbf{x}\, p(\mathbf{x}\mid \mathbf{x}_t)\,d\mathbf{x}$.
+For discrete states $s^{(i)}$ with transition matrix $P$,
+$g^\star(s^{(i)})=\sum_{j=1}^{K} P_{ij}\, s^{(j)}$.
+\end{corollary}
+
+Thus RMSE-optimal deterministic forecasts need not resemble any single realization;
+they are \emph{averages} over all possible futures weighted by conditional probability.

@@ -29,7 +29,7 @@ Primary backend is **Julia/Trixi** for simulation; **PyTorch U-Net** for one-ste
 | Paper figures | `experiments/kelvin_helmholtz/make_paper_figures.py` |
 | Full U-Net pipeline | `python run_kh_pipeline.py` or `run_unet_pipeline.sh` |
 | U-Net model | `experiments/common/models.py` (`UNet`, `radial_energy`) |
-| Colormap | `experiments/kelvin_helmholtz/kh_colormap.py` |
+| Paper notes & LaTeX | `paper/MEMORY.md`, `paper/latex/` |
 
 ### U-Net task (current spec)
 
@@ -113,10 +113,26 @@ Results: `outputs/markov/summary.json`
 - Only commit when user explicitly asks.
 - GitHub remote: `https://github.com/DYHAI/GRL_possibility` — `outputs/`, `*.npz`, `*.h5`, `tools/` are gitignored.
 
+## Paper manuscript
+
+Consolidated notes for the AGU/GRL draft:
+
+| Path | Content |
+|------|---------|
+| `paper/MEMORY.md` | **中文论文记忆**：论点、实验、指标、待办 |
+| `paper/outline.md` | Section roadmap |
+| `paper/figures.md` | Figure checklist + regenerate commands |
+| `paper/latex/*.tex` | Copy-paste LaTeX blocks (theory, methods, discussion, data availability) |
+
+Main thesis: MSE/RMSE-optimal deterministic forecast = conditional mean → over-smoothing, underestimated extremes, nonlinear non-closure (Jensen).
+
 ## Repo layout
 
 ```
 GRL_possibility/
+├── paper/                     # manuscript notes + LaTeX fragments
+│   ├── MEMORY.md              # 论文记忆（中文）
+│   └── latex/
 ├── run_kh_pipeline.py         # train → eval → figures (Trixi NPZ)
 ├── experiments/
 │   ├── common/models.py       # UNet, radial_energy
